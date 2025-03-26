@@ -2,7 +2,8 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Catcher game ...
+  * @brief          : Catcher game with PB5 short press (decrease delay)
+  *                   and long press (game over) functionality.
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -25,6 +26,8 @@
 /* USER CODE BEGIN PD */
 #define B1_Pin GPIO_PIN_13
 #define B1_GPIO_Port GPIOC
+
+#define LONG_PRESS_THRESHOLD 1000  // Long press threshold in ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -144,6 +147,11 @@ const uint8_t digitPatterns[10][5][3] = {
     {1,1,1}
   }
 };
+
+/* Variables for PB5 press detection */
+uint32_t pb5_press_time = 0;
+bool pb5_pressed_flag = false;
+bool pb5_long_press_executed = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -214,14 +222,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     paused = !paused;
   }
-  if (GPIO_Pin == GPIO_PIN_5)
-  {
-    // Speed up the game: decrease gameDelay (with a lower limit of minDelay)
-    if (gameDelay > minDelay)
-    {
-      gameDelay -= 10;
-    }
-  }
+  // Removed PB5 interrupt-based code.
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -430,13 +431,11 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim2);
   turnonscreen();
 
-  /* Game variables for paddle and falling object are now local */
+  /* Game variables for paddle and falling object */
   uint8_t paddlePos = 3;
   uint8_t fallRow   = 0;
   uint8_t fallCol   = 3;
-  /* 'score' is local to main in this example; if needed globally, move it to USER CODE PV */
   uint32_t scoreLocal = 0;
-  /* Note: gameDelay and minDelay are now global */
 
   /* Joystick thresholds */
   const uint16_t thresholdRight = 2500;
@@ -447,6 +446,56 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* --- PB5 Button Polling --- */
+    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5) == GPIO_PIN_RESET)
+    {
+      if (!pb5_pressed_flag)
+      {
+        // Button pressed down for the first time.
+        pb5_press_time = HAL_GetTick();
+        pb5_pressed_flag = true;
+        pb5_long_press_executed = false;
+      }
+      else
+      {
+        // Button is still pressed.
+        if (!pb5_long_press_executed &&
+            (HAL_GetTick() - pb5_press_time >= LONG_PRESS_THRESHOLD))
+        {
+          // Long press detected: run game-over sequence.
+          sprintf(msg, "Game Over! Final Score: %lu\r\n", scoreLocal);
+          HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+          flashScreen(3);
+          displayScore(scoreLocal);
+          HAL_Delay(2000);
+
+          // Reset game variables.
+          scoreLocal = 0;
+          gameDelay = 150;
+          fallRow = 0;
+          fallCol = (fallCol + 2) % 7;
+          pb5_long_press_executed = true;
+        }
+      }
+    }
+    else
+    {
+      // Button released.
+      if (pb5_pressed_flag)
+      {
+        // If button was released before the long-press threshold, it's a short press.
+        if (!pb5_long_press_executed)
+        {
+          if (gameDelay > minDelay)
+          {
+            gameDelay -= 10;
+          }
+        }
+        pb5_pressed_flag = false;
+        pb5_long_press_executed = false;
+      }
+    }
+
     if (!paused)
     {
       clearscreen();
@@ -523,9 +572,9 @@ int main(void)
       beepActive = false;
     }
   }
-    /* USER CODE END WHILE */
+  /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+  /* USER CODE BEGIN 3 */
   // (Additional code if needed)
   /* USER CODE END 3 */
 }
