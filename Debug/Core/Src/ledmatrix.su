@@ -1,0 +1,9 @@
+../Core/Src/ledmatrix.c:91:6:LEDMatrix_ClearScreen	24	static
+../Core/Src/ledmatrix.c:108:6:LEDMatrix_TurnOff	24	static
+../Core/Src/ledmatrix.c:120:6:LEDMatrix_TurnOn	24	static
+../Core/Src/ledmatrix.c:132:6:LEDMatrix_AddPixel	32	static
+../Core/Src/ledmatrix.c:146:6:LEDMatrix_RemovePixel	32	static
+../Core/Src/ledmatrix.c:160:6:LEDMatrix_DrawPaddle	16	static
+../Core/Src/ledmatrix.c:182:6:LEDMatrix_DrawDigit	32	static
+../Core/Src/ledmatrix.c:197:6:LEDMatrix_DisplayScore	24	static
+../Core/Src/ledmatrix.c:214:6:LEDMatrix_FlashScreen	64	static

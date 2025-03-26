@@ -2,13 +2,15 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Catcher game with PB5 short press (decrease delay)
-  *                   and long press (game over) functionality.
+  * @brief          : Catch the ball game with 11x7 LED matrix, joystick and
+  *                   speaker by Yung.
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "ledmatrix.h"  // Include the LED matrix header
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -19,7 +21,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-// (Any custom typedefs can be placed here)
+/* (Any custom typedefs can be placed here) */
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -32,7 +34,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-// (Any custom macros)
+/* (Any custom macros) */
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -57,96 +59,11 @@ bool beepActive = false;
 uint32_t beepStartTick = 0;
 const uint32_t beepDuration = 100; // Duration in ms for the nonblocking beep
 
-/* Global variables for LED matrix */
-uint8_t screenstatus[11] = {0};
-bool paused = false;  // Global pause flag, initialized to false
+bool paused = false;  // Global pause flag
 
-/* Game speed variables moved to global scope so they are accessible in callbacks */
+/* Game speed variables */
 uint32_t gameDelay = 150; // Global frame delay in ms (initial game speed)
 const uint32_t minDelay = 50; // Minimum delay (max game speed)
-
-/* LED matrix constants */
-static const uint8_t LEDMAT_ADD = 0x75 << 1;
-static const uint8_t PAGE_1 = 0x00;
-static const uint8_t FUN_REG = 0x0B;
-static const uint8_t COM_REG = 0xFD;
-static const uint8_t MAT_ROW[11] = {0x00, 0x02, 0x04, 0x06, 0x08, 0x0A,
-                                    0x01, 0x03, 0x05, 0x07, 0x09};
-static const uint8_t MAT_COL[7] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40};
-
-/* Digit patterns for score display (5 rows x 3 columns per digit) */
-const uint8_t digitPatterns[10][5][3] = {
-  { // 0
-    {1,1,1},
-    {1,0,1},
-    {1,0,1},
-    {1,0,1},
-    {1,1,1}
-  },
-  { // 1
-    {0,1,0},
-    {1,1,0},
-    {0,1,0},
-    {0,1,0},
-    {1,1,1}
-  },
-  { // 2
-    {1,1,1},
-    {0,0,1},
-    {1,1,1},
-    {1,0,0},
-    {1,1,1}
-  },
-  { // 3
-    {1,1,1},
-    {0,0,1},
-    {1,1,1},
-    {0,0,1},
-    {1,1,1}
-  },
-  { // 4
-    {1,0,1},
-    {1,0,1},
-    {1,1,1},
-    {0,0,1},
-    {0,0,1}
-  },
-  { // 5
-    {1,1,1},
-    {1,0,0},
-    {1,1,1},
-    {0,0,1},
-    {1,1,1}
-  },
-  { // 6
-    {1,1,1},
-    {1,0,0},
-    {1,1,1},
-    {1,0,1},
-    {1,1,1}
-  },
-  { // 7
-    {1,1,1},
-    {0,0,1},
-    {0,1,0},
-    {0,1,0},
-    {0,1,0}
-  },
-  { // 8
-    {1,1,1},
-    {1,0,1},
-    {1,1,1},
-    {1,0,1},
-    {1,1,1}
-  },
-  { // 9
-    {1,1,1},
-    {1,0,1},
-    {1,1,1},
-    {0,0,1},
-    {1,1,1}
-  }
-};
 
 /* Variables for PB5 press detection */
 uint32_t pb5_press_time = 0;
@@ -164,16 +81,6 @@ static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-/* Custom function prototypes */
-static void clearscreen(void);
-static void turnoffscreen(void);
-static void turnonscreen(void);
-static void addpixel(uint8_t r, uint8_t c);
-static void removepixel(uint8_t r, uint8_t c);
-static void drawPaddle(uint8_t centerCol);
-static void drawDigit(uint8_t digit, uint8_t topRow, uint8_t leftCol);
-static void displayScore(uint32_t score);
-static void flashScreen(uint8_t times);
 void beep(uint32_t score);
 void beepBlocking(void);
 /* USER CODE END PFP */
@@ -220,9 +127,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == B1_Pin)
   {
+    // Toggle the pause flag when B1 is pressed.
     paused = !paused;
   }
-  // Removed PB5 interrupt-based code.
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -231,164 +138,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   {
     Xaxis = rawValues[0];
     Yaxis = rawValues[1];
+    // Uncomment below lines to debug joystick values via UART:
     // sprintf(msg, "X: %hu, Y: %hu\r\n", Xaxis, Yaxis);
     // HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
   }
-}
-
-static void clearscreen(void)
-{
-  uint8_t data[2];
-  for (uint8_t r = 0; r < 11; r++)
-  {
-    data[0] = COM_REG;
-    data[1] = PAGE_1;
-    HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-    data[0] = MAT_ROW[r];
-    data[1] = 0x00;
-    HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-    screenstatus[r] = 0;
-  }
-}
-
-static void turnoffscreen(void)
-{
-  uint8_t data[2];
-  data[0] = COM_REG;
-  data[1] = FUN_REG;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-
-  data[0] = 0x0A;
-  data[1] = 0x00;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-}
-
-static void turnonscreen(void)
-{
-  uint8_t data[2];
-  data[0] = COM_REG;
-  data[1] = FUN_REG;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-
-  data[0] = 0x0A;
-  data[1] = 0x01;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-}
-
-static void addpixel(uint8_t r, uint8_t c)
-{
-  uint8_t data[2];
-  screenstatus[r] |= MAT_COL[c];
-  data[0] = COM_REG;
-  data[1] = PAGE_1;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-  data[0] = MAT_ROW[r];
-  data[1] = screenstatus[r];
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-}
-
-static void removepixel(uint8_t r, uint8_t c)
-{
-  uint8_t data[2];
-  screenstatus[r] &= ~MAT_COL[c];
-  data[0] = COM_REG;
-  data[1] = PAGE_1;
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-  data[0] = MAT_ROW[r];
-  data[1] = screenstatus[r];
-  HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-}
-
-static void drawPaddle(uint8_t centerCol)
-{
-  if (centerCol == 0)
-  {
-    addpixel(10, 0);
-    addpixel(10, 1);
-    addpixel(10, 2);
-  }
-  else if (centerCol >= 6)
-  {
-    addpixel(10, 4);
-    addpixel(10, 5);
-    addpixel(10, 6);
-  }
-  else
-  {
-    addpixel(10, centerCol - 1);
-    addpixel(10, centerCol);
-    addpixel(10, centerCol + 1);
-  }
-}
-
-static void drawDigit(uint8_t digit, uint8_t topRow, uint8_t leftCol)
-{
-  if (digit > 9) return;
-  for (uint8_t i = 0; i < 5; i++)
-  {
-    for (uint8_t j = 0; j < 3; j++)
-    {
-      if (digitPatterns[digit][i][j])
-      {
-        addpixel(topRow + i, leftCol + j);
-      }
-    }
-  }
-}
-
-static void displayScore(uint32_t score)
-{
-  clearscreen();
-  uint8_t topRow = 3;
-  if (score < 10)
-  {
-    drawDigit((uint8_t)score, topRow, 2);
-  }
-  else
-  {
-    uint8_t tens = (score / 10) % 10;
-    uint8_t ones = score % 10;
-    drawDigit(tens, topRow, 0);
-    drawDigit(ones, topRow, 4);
-  }
-}
-
-static void flashScreen(uint8_t times)
-{
-  uint8_t data[2];
-  uint32_t defaultPeriod = htim3.Init.Period;
-  uint32_t notePeriods[3] = {999, 1249, 1666};
-  uint32_t noteDurations[3] = {150, 150, 300};
-
-  for (uint8_t t = 0; t < times; t++)
-  {
-    for (uint8_t r = 0; r < 11; r++)
-    {
-      data[0] = COM_REG;
-      data[1] = PAGE_1;
-      HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-      data[0] = MAT_ROW[r];
-      data[1] = 0x7F;
-      HAL_I2C_Master_Transmit(&hi2c1, LEDMAT_ADD, data, 2, HAL_MAX_DELAY);
-      screenstatus[r] = 0x7F;
-    }
-    if (t < 3)
-    {
-      __HAL_TIM_SET_AUTORELOAD(&htim3, notePeriods[t]);
-      __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, notePeriods[t] / 2);
-      HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-      HAL_Delay(noteDurations[t]);
-      HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-    }
-    else
-    {
-      beepBlocking();
-    }
-    HAL_Delay(200);
-    clearscreen();
-    HAL_Delay(200);
-  }
-  __HAL_TIM_SET_AUTORELOAD(&htim3, defaultPeriod);
 }
 /* USER CODE END 0 */
 
@@ -399,16 +152,16 @@ static void flashScreen(uint8_t times)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  // (Custom pre-initialization code can be added here)
+  // (Additional pre-initialization code if needed)
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  /* Reset all peripherals, initialize the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  // (Additional initialization before system clock config)
+  // (Additional initialization before system clock configuration)
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -429,7 +182,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc1, (uint32_t *)rawValues, 2);
   HAL_TIM_Base_Start_IT(&htim2);
-  turnonscreen();
+  LEDMatrix_TurnOn();
 
   /* Game variables for paddle and falling object */
   uint8_t paddlePos = 3;
@@ -465,8 +218,8 @@ int main(void)
           // Long press detected: run game-over sequence.
           sprintf(msg, "Game Over! Final Score: %lu\r\n", scoreLocal);
           HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-          flashScreen(3);
-          displayScore(scoreLocal);
+          LEDMatrix_FlashScreen(3);
+          LEDMatrix_DisplayScore(scoreLocal);
           HAL_Delay(2000);
 
           // Reset game variables.
@@ -498,7 +251,7 @@ int main(void)
 
     if (!paused)
     {
-      clearscreen();
+      LEDMatrix_ClearScreen();
 
       if (Yaxis > thresholdRight && paddlePos > 0)
       {
@@ -508,8 +261,8 @@ int main(void)
       {
         paddlePos++;
       }
-      drawPaddle(paddlePos);
-      addpixel(fallRow, fallCol);
+      LEDMatrix_DrawPaddle(paddlePos);
+      LEDMatrix_AddPixel(fallRow, fallCol);
       HAL_Delay(gameDelay);
 
       if (fallRow < 10)
@@ -550,8 +303,8 @@ int main(void)
         {
           sprintf(msg, "Game Over! Final Score: %lu\r\n", scoreLocal);
           HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-          flashScreen(3);
-          displayScore(scoreLocal);
+          LEDMatrix_FlashScreen(3);
+          LEDMatrix_DisplayScore(scoreLocal);
           HAL_Delay(2000);
           scoreLocal = 0;
           gameDelay = 150;
@@ -588,14 +341,11 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure the main internal regulator output voltage
-  */
+  /** Configure the main internal regulator output voltage */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+  /** Initializes the RCC Oscillators according to the specified parameters */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -609,16 +359,13 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  /** Initializes the CPU, AHB and APB buses clocks */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                              | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
@@ -627,24 +374,12 @@ void SystemClock_Config(void)
 
 /**
   * @brief ADC1 Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_ADC1_Init(void)
 {
-
-  /* USER CODE BEGIN ADC1_Init 0 */
-
-  /* USER CODE END ADC1_Init 0 */
-
   ADC_ChannelConfTypeDef sConfig = {0};
 
-  /* USER CODE BEGIN ADC1_Init 1 */
-
-  /* USER CODE END ADC1_Init 1 */
-
-  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
@@ -661,9 +396,6 @@ static void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
   sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;
@@ -671,36 +403,20 @@ static void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
   sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = 2;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN ADC1_Init 2 */
-
-  /* USER CODE END ADC1_Init 2 */
-
 }
 
 /**
   * @brief I2C1 Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_I2C1_Init(void)
 {
-
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
@@ -714,34 +430,21 @@ static void MX_I2C1_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
   * @brief TIM2 Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_TIM2_Init(void)
 {
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 10;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 84000-1;
+  htim2.Init.Period = 84000 - 1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -759,30 +462,17 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
-
 }
 
 /**
   * @brief TIM3 Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_TIM3_Init(void)
 {
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 83;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -807,28 +497,15 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
-
 }
 
 /**
   * @brief USART2 Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_USART2_UART_Init(void)
 {
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
   huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
@@ -841,38 +518,28 @@ static void MX_USART2_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
 }
 
 /**
-  * Enable DMA controller clock
+  * @brief Enable DMA controller clock and configure interrupts.
+  * @retval None
   */
 static void MX_DMA_Init(void)
 {
-
-  /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-
 }
 
 /**
   * @brief GPIO Initialization Function
-  * @param None
   * @retval None
   */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -880,37 +547,34 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
+  /* Configure GPIO pin Output Level for LD2 */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC13 */
+  /* Configure GPIO pin : PC13 (B1 button) */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
+  /* Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB5 */
+  /* Configure GPIO pin : PB5 (game control button) */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /* EXTI interrupt init*/
+  /* EXTI interrupt init */
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -923,27 +587,21 @@ static void MX_GPIO_Init(void)
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
   }
-  /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
+  * @brief  Reports the file name and line number where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number */
-  /* USER CODE END 6 */
+  /* User can add implementation to report the file name and line number */
 }
 #endif /* USE_FULL_ASSERT */

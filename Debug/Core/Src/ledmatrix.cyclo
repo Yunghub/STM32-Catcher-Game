@@ -1,0 +1,9 @@
+../Core/Src/ledmatrix.c:91:6:LEDMatrix_ClearScreen	2
+../Core/Src/ledmatrix.c:108:6:LEDMatrix_TurnOff	1
+../Core/Src/ledmatrix.c:120:6:LEDMatrix_TurnOn	1
+../Core/Src/ledmatrix.c:132:6:LEDMatrix_AddPixel	1
+../Core/Src/ledmatrix.c:146:6:LEDMatrix_RemovePixel	1
+../Core/Src/ledmatrix.c:160:6:LEDMatrix_DrawPaddle	3
+../Core/Src/ledmatrix.c:182:6:LEDMatrix_DrawDigit	5
+../Core/Src/ledmatrix.c:197:6:LEDMatrix_DisplayScore	2
+../Core/Src/ledmatrix.c:214:6:LEDMatrix_FlashScreen	4
