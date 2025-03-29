@@ -2,6 +2,8 @@
 
 Catch the Ball is an embedded system game that runs on an STM32 microcontroller. This project uses an 11x7 LED matrix, a joystick, and a speaker to deliver an interactive gaming experience where the player controls a paddle to catch falling objects.
 
+![stm](https://github.com/user-attachments/assets/a751b923-579b-4042-81d4-8c7236204864)
+
 ## Features
 
 - **LED Matrix Display:** An 11x7 LED matrix shows the game graphics.
